@@ -48,9 +48,9 @@ apsim.exec <- function(country, useCaseName, Crops, AOI = TRUE,expfile_name,vari
   #Set working directory to save the results
   # zone <- gsub(" ", "_", zone)
   if(AOI == TRUE){
-    path.to.varietyid <- paste("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", country, "_",useCaseName, "/", Crop, "/transform/APSIM/AOI/",varietyid, sep="")
+    path.to.varietyid <- paste("/home/jovyan/agwise-cropping-innovation/Data/useCase_", country, "_",useCaseName, "/", Crop, "/transform/APSIM/AOI/",varietyid, sep="")
   }else{
-    path.to.varietyid <- paste("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", country, "_",useCaseName, "/", Crop, "/transform/APSIM/fieldData/",varietyid, sep="")
+    path.to.varietyid <- paste("/home/jovyan/agwise-cropping-innovation/Data/useCase_", country, "_",useCaseName, "/", Crop, "/transform/APSIM/fieldData/",varietyid, sep="")
   }
   
   # define working path or path to run the model

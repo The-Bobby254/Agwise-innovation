@@ -1,0 +1,56 @@
+---
+title: "Cropping Innovation with APSIM"
+author: "A. Carmona-Cabrero"
+date: "2025-11-05"
+output: html_document
+---
+
+## Running APSIM for Cropping Innovation
+
+##### Obtaining weather, soil and experimental data in APSIM format can be done only after getting the point based geo-spatial data following the data sourcing steps.
+
+<br>
+
+1. Make sure there is weather and soil data, planting and harvest dates for your target area and the data has the correct variables:
+  - for trial sites **<variable>_PointData_trial.RDS** is required in the correct folder, e.g., **~/agwise-datasourcing/dataops/datasourcing/Data/useCase_Rwanda_RAB/Maize/result/geo_4cropModel/Rainfall_PointData_trial.RDS**
+  - for AOI **<variable>_Season_<season number>_PointData_AOI.RDS** is required within the correct folder, e.g., **~/agwise-datasourcing/dataops/datasourcing/Data/useCase_Rwanda_RAB/Maize/result/geo_4cropModel/Rainfall_Season_1_PointData_AOI.RDS**
+
+<br>
+
+2. Make sure the template apsimx and soil are in the correct folder (e.g., **~/agwise-cropping-innovation/Data/useCase_Rwanda_RAB/Maize/Landing/APSIM**) 
+
+<br> 
+
+3. Create a folder under **~/agwise-cropping-innovation/Scripts/APSIM/useCases** .... In this folder you will have the scripts to execute crop modelling functions for your use case and crop combination 
+  - for example, **~/agwise-cropping-innovation/Scripts/APSIM/useCases/UseCase_Rwanda_RAB/Maize/**  (use the relevant useCase country usecaseName crop and model)
+
+<br>
+
+4. Copy the script **01_get_CM_geo_RAB_Maize_APSIM.R** from **~/agwise-cropping-innovation/Scripts/APSIM/useCases/UseCase_Rwanda_RAB/Maize/APSIM** to the folder you just created at step 3.
+  - this script sources **~/agwise-croopping-innovation/Scripts/APSIM/generic/01_readGeo_CM_zone_APSIM.R** which is transforming the weather and soil data from R to APSIM format.
+
+<br>
+
+5. Fill in the correct arguments in the script you copied, i.e., **01_get_CM_geo_RAB_Potato_APSIM**  in your newly created folder:
+  - change the country, use case name, crop, variety name, soil profile depths, etc.
+
+<br>
+
+6. Copy the script **02_expfile_RAB_Maize_APSIM.R** from **~/agwise-cropping-innovation/Scripts/APSIM/useCases/UseCase_Rwanda_RAB/Maize/APSIM** to the folder you just created at step 3. This script sources **02_{cropping system}_apsim.R** which creates the experimental file in APSIM format modifying starting of simulation, initial conditions, planting and harvesting dates, and fixing potential soil-crop interaction errors.
+
+<br>
+
+7. Copy the script **03_expfile_RAB_Maize_APSIM.R** from **~/agwise-cropping-innovation/Scripts/APSIM/useCases/UseCase_Rwanda_RAB/Maize/APSIM** to the folder you just created at step 3. This script sources:
+    - **03_{cropping system}_RunSim.R** which runs APSIM for all the folders with weather, soil and experimental data.
+    - **04_{cropping system}_merge_APSIM_output.R** which merges the yield results for all the locations in the use case and crop analyzed.
+
+<br>
+
+8. Copy the script **04_summary_ONI_plots_RAB_Maize_APSIM.R** from **~/agwise-cropping-innovation/Scripts/APSIM/useCases/UseCase_Rwanda_RAB/Maize/APSIM** to the folder you just created at step 3. This script sources:
+    - **05_{cropping system}_produce_APSIM_plots.R** which produces scatter plots for each EXTE file and basic yield maps.
+    - **06_{cropping system}_APSIM_summary_ONI.R** which produces yield plots based on ONI and variety, and maps showing the best sowing dates.
+
+<br>
+
+9. Fill in the correct arguments in the scripts you copied, i.e., in your newly created folder:
+  - change the country, use case name, crop, simulation dates, etc. 

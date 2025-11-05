@@ -1,13 +1,10 @@
-# Prepare environmental data
+# Create soil and weather data in APSIM format for AOI data
 
-#################################################################################################################
-## source "01_1readGeo_CM_zone_APSIM.R" function and get weather data 
-#################################################################################################################
-source("~/agwise-potentialyield/dataops/potentialyield/Script/generic/APSIM/01_readGeo_CM_zone_APSIM.R")
 
-#################################################################################################################
-## Create soil and weather data in APSIM format for AOI data
-#################################################################################################################
+################################################################################
+## USER SETTINGS — Edit the parameters below to configure the analysis        ##
+################################################################################
+
 pathIn_zone <- T
 level2 <- NA
 Depth <- c(5, 15, 30, 60, 100, 200)
@@ -21,13 +18,20 @@ varietyid <- "Early"
 # varietyid <- "Dekalb_XL82"
 # varietyid <- "Katumani"
 
+
+################################################################################
+## DO NOT EDIT BELOW THIS LINE — Core processing code                         ##
+################################################################################
+
 countryShp <- geodata::gadm(country, level = 2, path='.')
 prov <- unique(countryShp$NAME_1)
 
-path.to.extdata <- paste("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", 
-                                            country, "_",useCaseName, "/", Crop, "/transform/APSIM/AOI/", sep="")
+source("~/agwise-cropping-innovation/Scripts/APSIM/generic/01_readGeo_CM_zone_APSIM.R")
 
-log_file <- paste(path.to.extdata,"progress_log_readGeo_CM_APSIM.txt",sep='/')
+path.to.extdata <- paste("~/agwise-cropping-innovation/Data/useCase_", 
+                                            country, "_",useCaseName, "/", Crop, "/transform/APSIM/AOI", sep="")
+
+log_file <- paste(path.to.extdata, "progress_log_readGeo_CM_APSIM.txt", sep='/')
 
 if (file.exists(log_file)) {
   file.remove(log_file)
@@ -49,4 +53,4 @@ for (i in 1:length(prov)){
 
 end_time <- Sys.time()
 duration <- end_time - start_time
-cat(duration, "\n", file = log_file, append = TRUE)
+# cat(duration, "\n", file = log_file, append = TRUE)

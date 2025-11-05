@@ -1,12 +1,15 @@
-##################################
-## Run APSIMX experimental file ##
-##################################
+# This script runs APSIM simulations for the defined experimental file
+
+
+################################################################################
+## USER SETTINGS — Edit the parameters below to configure the analysis        ##
+################################################################################
 
 ## Define experiment ##
 # Experimental file name
-# expfile_name <- "MaizeFactorialAugSep.apsimx"; cropping_system <- "monocrop"
+expfile_name <- "MaizeFactorialAugSep.apsimx"; cropping_system <- "monocrop"
 
-expfile_name <- "MaizePeanutIntercrop.apsimx"; cropping_system <- "intercrop"
+# expfile_name <- "MaizePeanutIntercrop.apsimx"; cropping_system <- "intercrop"
 # expfile_name <- "MaizeSoybeanIntercrop.apsimx"; cropping_system <- "intercrop"
 
 # expfile_name <- "MaizePeanutRotation.apsimx"; cropping_system <- "rotation"
@@ -22,8 +25,8 @@ sec_Crop <- "Peanut"
 Crops <- c(main_Crop, sec_Crop)
 
 # Main and secondary crop cultivars
-# main_Crop_varietyid <- "Early"
-main_Crop_varietyid <- "Dekalb_XL82"  # Maize cultivar
+main_Crop_varietyid <- "Early"
+# main_Crop_varietyid <- "Dekalb_XL82"  # Maize cultivar
 # main_Crop_varietyid <- "Katumani"  # Maize cultivar
 sec_Crop_varietyid <- "Florunner"  # Peanut cultivar
 # sec_Crop_varietyid <- "Soya791"  # Soybean cultivar
@@ -31,7 +34,7 @@ varietyids <- c(main_Crop_varietyid, sec_Crop_varietyid)
 
 ## Use this to visualize APSIMX experimental file
 # apsimx::view_apsimx(expfile_name, 
-#                     src.dir = "~/agwise-potentialyield/dataops/potentialyield/Data/useCase_Rwanda_RAB/Maize/transform/APSIM/Early/Amajyaruguru/EXTE0001/")
+#                     src.dir = "/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_Rwanda_RAB/Maize/transform/APSIM/Early/Amajyaruguru/EXTE0001/")
 
 countryShp <- geodata::gadm(country, level = 2, path='.')
 prov <- unique(countryShp$NAME_1)
@@ -41,14 +44,19 @@ pathIn_zone <- T
 season <- 1
 
 
+################################################################################
+## DO NOT EDIT BELOW THIS LINE — Core processing code                         ##
+################################################################################
 
-
+##################################
+## Run APSIMX experimental file ##
+##################################
 
 # Source script and select function
 script_to_source <- switch(cropping_system,
-                           monocrop = "~/agwise-potentialyield/dataops/potentialyield/Script/generic/APSIM/03_MONOCROP_RunSim.R",
-                           intercrop = "~/agwise-potentialyield/dataops/potentialyield/Script/generic/APSIM/03_INTERCROP_RunSim.R",
-                           rotation = "~/agwise-potentialyield/dataops/potentialyield/Script/generic/APSIM/03_ROTATION_RunSim.R")
+                           monocrop = "/home/jovyan/agwise-cropping-innovation/Scripts/APSIM/generic/03_MONOCROP_RunSim.R",
+                           intercrop = "/home/jovyan/agwise-cropping-innovation/Scripts/APSIM/generic/03_INTERCROP_RunSim.R",
+                           rotation = "/home/jovyan/agwise-cropping-innovation/Scripts/APSIM/generic/03_ROTATION_RunSim.R")
 
 source(script_to_source)
 
@@ -89,9 +97,9 @@ cat("Time for simulations:", duration, "min")
 
 # Source script and select function
 script_to_source <- switch(cropping_system,
-                           monocrop = "~/agwise-potentialyield/dataops/potentialyield/Script/generic/APSIM/04_MONOCROP_merge_APSIM_output.R",
-                           intercrop = "~/agwise-potentialyield/dataops/potentialyield/Script/generic/APSIM/04_INTERCROP_merge_APSIM_output.R",
-                           rotation = "~/agwise-potentialyield/dataops/potentialyield/Script/generic/APSIM/04_ROTATION_merge_APSIM_output.R")
+                           monocrop = "/home/jovyan/agwise-cropping-innovation/Scripts/APSIM/generic//04_MONOCROP_merge_APSIM_output.R",
+                           intercrop = "/home/jovyan/agwise-cropping-innovation/Scripts/APSIM/generic/04_INTERCROP_merge_APSIM_output.R",
+                           rotation = "/home/jovyan/agwise-cropping-innovation/Scripts/APSIM/generic/04_ROTATION_merge_APSIM_output.R")
 
 source(script_to_source)
 
@@ -103,8 +111,8 @@ merge_outputs <- switch(cropping_system,
 arguments <- switch(cropping_system,
                     monocrop = list(
                       country = country, useCaseName = useCaseName, 
-                      Crop = Crop, expfile_name = expfile_name, AOI = AOI,
-                      season = season, varietyids = varietyids
+                      Crop = main_Crop, expfile_name = expfile_name, AOI = AOI,
+                      season = season, varietyids = main_Crop_varietyid
                     ),
                     intercrop = list(
                       country = country, useCaseName = useCaseName, 
