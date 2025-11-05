@@ -11,6 +11,7 @@
 *.RDS
 *.csv
 *.parquet
+*.html
 *.png
 *.pdf
 **/result/
