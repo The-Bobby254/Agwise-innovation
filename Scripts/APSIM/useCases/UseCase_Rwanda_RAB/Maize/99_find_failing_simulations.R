@@ -1,14 +1,16 @@
+# Identify failing simulations (treatment/year)
+
 library(arrow)
 library(dplyr)
 library(tidyr)
 library(purrr)
 library(tools)
 
-# expfile_name <- "MaizeFactorialAugSep.parquet"
-expfile_name <- "MaizePeanutIntercrop.parquet"
+expfile_name <- "MaizeFactorialAugSep.parquet"
+# expfile_name <- "MaizePeanutIntercrop.parquet"
 # expfile_name <- "MaizePeanutRotation.parquet"
 
-apsim <- arrow::read_parquet(paste0("~/agwise-potentialyield/dataops/potentialyield/Data/useCase_Rwanda_RAB/Maize/result/APSIM/AOI/", expfile_name))
+apsim <- arrow::read_parquet(paste0("~/agwise-cropping-innovation/Data/useCase_Rwanda_RAB/Maize/result/APSIM/AOI/", expfile_name))
 
 apsim <- apsim %>%
   dplyr::mutate(
@@ -84,4 +86,4 @@ failure_by_pixel <- failure_by_pixel_years %>%
             by = c("pixel_id", "file_name", "zone")) %>%
   arrange(desc(n_missing_years), desc(n_missing_treatments))
 
-# write_csv(failure_by_pixel, "~/agwise-potentialyield/dataops/potentialyield/Script/useCases/UseCase_Rwanda_RAB/Maize/APSIM/failing_simulation.csv")
+# write_csv(failure_by_pixel, "~/agwise-cropping-innovation/Scripts/APSIM/useCases/UseCase_Rwanda_RAB/Maize/failing_simulation.csv")

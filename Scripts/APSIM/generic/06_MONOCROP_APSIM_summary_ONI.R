@@ -201,7 +201,7 @@ calculate_mode <- function(x) {
 #' @param medium_variety variety ID with medium growing period duration 
 #' @param long_variety variety ID with long growing period duration
 #'
-#' @return A table with the aggregated APSIM simulation classified based on ONI index - Output table is written out in "~/agwise-potentialyield/dataops/potentialyield/Data/useCaseName/Crop/result/APSIM/Extent/useCase_country_useCaseName_crop_Extent_season_X_ONI.RDS")
+#' @return A table with the aggregated APSIM simulation classified based on ONI index - Output table is written out in "~/agwise-cropping-innovation/Data/useCaseName/Crop/result/APSIM/Extent/useCase_country_useCaseName_crop_Extent_season_X_ONI.RDS")
 #'
 #' @examples get_ONI(country= "Kenya", useCaseName = "KALRO", Crop="Maize", AOI=T, season=1, Plot=TRUE, short_variety="900111", medium_variety="900112",long_variety="900113")
 #' 
@@ -212,9 +212,9 @@ get_ONI <- function(country, useCaseName, Crop, expfile_name,
   
   ## 3.1. Creating a directory to store output table and graphics ####
   if (AOI == TRUE){
-    pathOut <- paste0("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", country, "_",useCaseName,"/",Crop,"/result/APSIM/AOI/", sep="")
+    pathOut <- paste0("/home/jovyan/agwise-cropping-innovation/Data/useCase_", country, "_",useCaseName,"/",Crop,"/result/APSIM/AOI/", sep="")
   } else {
-    pathOut <- paste0("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", country, "_",useCaseName,"/",Crop,"/result/APSIM/fieldData/",  sep="")
+    pathOut <- paste0("/home/jovyan/agwise-cropping-innovation/Data/useCase_", country, "_",useCaseName,"/",Crop,"/result/APSIM/fieldData/",  sep="")
   }
   
   if (justplot == FALSE) {
@@ -532,10 +532,10 @@ get_ONI <- function(country, useCaseName, Crop, expfile_name,
     ## 3.6. Maps ####
     
     # Read the relevant shape file from gdam to be used to crop the global data
-    countryShp <- geodata::gadm(country, level = 1, path=paste0("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", country, "_",useCaseName,"/",Crop,"/result/APSIM/", sep=""))
+    countryShp <- geodata::gadm(country, level = 1, path=paste0("/home/jovyan/agwise-cropping-innovation/Data/useCase_", country, "_",useCaseName,"/",Crop,"/result/APSIM/", sep=""))
     country_sf <- sf::st_as_sf(countryShp)
     
-    countryShp0 <- geodata::gadm(country, level = 0, path=paste0("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", country, "_",useCaseName,"/",Crop,"/result/APSIM/", sep=""))
+    countryShp0 <- geodata::gadm(country, level = 0, path=paste0("/home/jovyan/agwise-cropping-innovation/Data/useCase_", country, "_",useCaseName,"/",Crop,"/result/APSIM/", sep=""))
     country_sf0 <- sf::st_as_sf(countryShp0)
     
     
@@ -691,6 +691,17 @@ get_ONI <- function(country, useCaseName, Crop, expfile_name,
     
     max_median_summary$ENSO <- factor(max_median_summary$ENSO,levels =c("Niño","Neutral","Niña"))
     max_median_summary <- na.omit(max_median_summary)
+    
+    max_median_summary <- max_median_summary %>%
+      mutate(
+        Opt_date_parsed = as.Date(paste0(Opt_date, "-2024"), format = "%d-%b-%Y")
+      ) %>%
+      mutate(
+        Opt_date = factor(Opt_date,
+                          levels = unique(Opt_date[order(Opt_date_parsed)])
+        )
+      )
+    
     d<-max_median_summary %>%
       ggplot() +
       geom_raster(aes(x = lon, y = lat, fill = Opt_date)) +
