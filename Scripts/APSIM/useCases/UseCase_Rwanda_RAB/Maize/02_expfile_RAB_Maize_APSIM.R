@@ -1,6 +1,8 @@
-###############################################################
-## Create soil and weather data in APSIM format for AOI data ##
-###############################################################
+# Create soil and weather data in APSIM format for AOI data
+
+################################################################################
+## USER SETTINGS — Edit the parameters below to configure the analysis        ##
+################################################################################
 
 ## Define experiment ##
 # Experimental file name
@@ -25,7 +27,7 @@ Crops <- c(main_Crop, sec_Crop)
 main_Crop_varietyid <- "Early"
 # main_Crop_varietyid <- "Dekalb_XL82"  # Maize cultivar
 # main_Crop_varietyid <- "Katumani"  # Maize cultivar
-sec_Crop_varietyid <- "Florunner"  # Peanut cultivar
+# sec_Crop_varietyid <- "Florunner"  # Peanut cultivar
 # sec_Crop_varietyid <- "Soya791"  # Soybean cultivar
 varietyids <- c(main_Crop_varietyid, sec_Crop_varietyid)
 
@@ -41,9 +43,9 @@ rep <- c("[Maize].Grain.Total.Wt*10 as Yield",
          "[Maize].SowingDate")
 
 ## Use this to visualize APSIMX experimental file
-library(listviewer)
-apsimx::view_apsimx(expfile_name,
-                    src.dir = "~/agwise-potentialyield/dataops/potentialyield/Data/useCase_Rwanda_RAB/Maize/Landing/APSIM/")
+# library(listviewer)
+# apsimx::view_apsimx(expfile_name,
+#                     src.dir = "~/agwise-cropping-innovation/Data/useCase_Rwanda_RAB/Maize/Landing/APSIM/")
 
 countryShp <- geodata::gadm(country, level = 2, path='.')
 prov <- unique(countryShp$NAME_1)
@@ -53,13 +55,15 @@ pathIn_zone <- T
 season <- 1
 
 
-
+################################################################################
+## DO NOT EDIT BELOW THIS LINE — Core processing code                         ##
+################################################################################
 
 # Source script and select function
 script_to_source <- switch(cropping_system,
-                           monocrop = "~/agwise-potentialyield/dataops/potentialyield/Script/generic/APSIM/02_MONOCROP_apsim.R",
-                           intercrop = "~/agwise-potentialyield/dataops/potentialyield/Script/generic/APSIM/02_INTERCROP_apsim.R",
-                           rotation = "~/agwise-potentialyield/dataops/potentialyield/Script/generic/APSIM/02_ROTATION_apsim.R")
+                           monocrop = "~/agwise-cropping-innovation/Scripts/APSIM/generic/02_MONOCROP_apsim.R",
+                           intercrop = "~/agwise-cropping-innovation/Scripts/APSIM/generic/02_INTERCROP_apsim.R",
+                           rotation = "~/agwise-cropping-innovation/Scripts/APSIM/generic/02_ROTATION_apsim.R")
 
 source(script_to_source)
 

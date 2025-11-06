@@ -333,7 +333,7 @@ apsimIntercrop <- function(country,useCaseName,Crops, AOI = FALSE, season=1,zone
   Crop <- Crops[1]
   varietyid <- varietyids[1]
   
-  general_pathIn <- paste("~/agwise-datasourcing/dataops/datasourcing/Data/useCase_", country, "_", useCaseName,"/", Crop, "/result/geo_4cropModel", sep="")
+  general_pathIn <- paste("/home/jovyan/agwise-datasourcing/dataops/datasourcing/Data/useCase_", country, "_", useCaseName,"/", Crop, "/result/geo_4cropModel", sep="")
   #define input path based on the organization of the folders by zone and level2 (usually just by zone)
   if (pathIn_zone == T) {
     if(!is.na(level2) & !is.na(zone)){
@@ -473,10 +473,10 @@ apsimIntercrop <- function(country,useCaseName,Crops, AOI = FALSE, season=1,zone
   
   
   if(AOI == TRUE){
-    path.to.extdata <- paste("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", 
+    path.to.extdata <- paste("/home/jovyan/agwise-cropping-innovation/Data/useCase_", 
                              country, "_",useCaseName, "/", Crop, "/transform/APSIM/AOI/",varietyid, sep="")
   }else{
-    path.to.extdata <- paste("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", 
+    path.to.extdata <- paste("/home/jovyan/agwise-cropping-innovation/Data/useCase_", 
                              country, "_",useCaseName, "/", Crop, "/transform/APSIM/fieldData/",varietyid, sep="")
   }
   
@@ -499,7 +499,7 @@ apsimIntercrop <- function(country,useCaseName,Crops, AOI = FALSE, season=1,zone
     file.remove(log_file)
   }
   
-  path.to.temdata <- paste("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", 
+  path.to.temdata <- paste("/home/jovyan/agwise-cropping-innovation/Data/useCase_", 
                            country, "_",useCaseName, "/", Crop, "/Landing/APSIM/", sep="")
   
   # Set up parallel processing (for more efficient processing)

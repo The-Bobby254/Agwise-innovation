@@ -329,7 +329,7 @@ process_grid_element_experiment <- function(i,path.to.extdata,path.to.temdata,zo
 #' 
 apsimSpatialFactorial <- function(country,useCaseName,Crop, AOI = FALSE, season=1,zone,level2=NA,pathIn_zone=T,expfile_name,clck,varietyid,rep,fix_crop_or_soil_parm) {
 
-  general_pathIn <- paste("~/agwise-datasourcing/dataops/datasourcing/Data/useCase_", country, "_", useCaseName,"/", Crop, "/result/geo_4cropModel", sep="")
+  general_pathIn <- paste("/home/jovyan/agwise-datasourcing/dataops/datasourcing/Data/useCase_", country, "_", useCaseName,"/", Crop, "/result/geo_4cropModel", sep="")
   #define input path based on the organization of the folders by zone and level2 (usually just by zone)
   if (pathIn_zone == T) {
     if(!is.na(level2) & !is.na(zone)){
@@ -470,10 +470,10 @@ apsimSpatialFactorial <- function(country,useCaseName,Crop, AOI = FALSE, season=
   
   
   if(AOI == TRUE){
-    path.to.extdata <- paste("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", 
+    path.to.extdata <- paste("/home/jovyan/agwise-cropping-innovation/Data/useCase_", 
                              country, "_",useCaseName, "/", Crop, "/transform/APSIM/AOI/",varietyid, sep="")
   }else{
-    path.to.extdata <- paste("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", 
+    path.to.extdata <- paste("/home/jovyan/agwise-cropping-innovation/Data/useCase_", 
                              country, "_",useCaseName, "/", Crop, "/transform/APSIM/fieldData/",varietyid, sep="")
   }
   
@@ -495,7 +495,7 @@ apsimSpatialFactorial <- function(country,useCaseName,Crop, AOI = FALSE, season=
     file.remove(log_file)
   }
   
-  path.to.temdata <- paste("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", 
+  path.to.temdata <- paste("/home/jovyan/agwise-cropping-innovation/Data/useCase_", 
                            country, "_",useCaseName, "/", Crop, "/Landing/APSIM/", sep="")
   
   # Set up parallel processing (for more efficient processing)

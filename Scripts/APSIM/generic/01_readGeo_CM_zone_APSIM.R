@@ -116,7 +116,10 @@ depth_names = function(var_name, depths){
   return (sapply(depths, function(d) paste0(var_name, "_", list_depthnames[as.character(d)])))
 }
                  
-process_grid_element <- function(i,country,path.to.extdata,path.to.temdata,Tmaxdata,Tmindata,Sraddata,Rainfalldata,coords,Soil,AOI,varietyid,zone,level2=NA,Depth = c(5,15,30,60,100,200) ) {
+process_grid_element <- function(i, country, path.to.extdata, path.to.temdata,
+                                 Tmaxdata, Tmindata, Sraddata, Rainfalldata,
+                                 coords, Soil, AOI, varietyid, zone, ex_profile,
+                                 level2 = NA, Depth = c(5,15,30,60,100,200)) {
 
   if(!is.na(level2) & !is.na(zone)){
     pathOUT <- paste(path.to.extdata,paste0(zone,'/',level2,'/EXTE', formatC(width = 4, (as.integer(i)), flag = "0")), sep = "/")
@@ -134,7 +137,7 @@ process_grid_element <- function(i,country,path.to.extdata,path.to.temdata,Tmaxd
   if (!dir.exists(file.path(pathOUT))){
     dir.create(file.path(pathOUT), recursive = TRUE)
   }
-  setwd(pathOUT)
+  # setwd(pathOUT)
 
   Tmaxdata <- Tmaxdata[Tmaxdata$longitude==coords$longitude[i] & Tmaxdata$latitude==coords$latitude[i],]
   Tmindata <- Tmindata[Tmindata$longitude==coords$longitude[i] & Tmindata$latitude==coords$latitude[i],]
@@ -261,8 +264,6 @@ process_grid_element <- function(i,country,path.to.extdata,path.to.temdata,Tmaxd
   #tst<- amp_apsim_met(tst)
 
 
-
-
   # apsimx::write_apsim_met(my_list_clm[[i]], wrt.dir = "D:/APSIM/", filename = paste0('wth_loc_',i,'.met'))}
   apsimx::write_apsim_met(tst, wrt.dir = pathOUT, filename = paste0('wth_loc_',i,'.met'))
   #cat(" Writing weather file")
@@ -330,15 +331,7 @@ process_grid_element <- function(i,country,path.to.extdata,path.to.temdata,Tmaxd
   #     })
   # }
 
-  # Define working directory with template data (soil and weather files in APSIM format as template)
-  path.to.temdata <- paste("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", 
-                          country, "_",useCaseName, "/", Crop, "/Landing/APSIM/", sep="")
-  if (!dir.exists(path.to.temdata)){
-   print("Directory with template data (soil and weather files in APSIM) does not exist, please add the template files. Process will stop.")
-   dir.create(file.path(path.to.temdata), recursive = TRUE)
-   return(NULL)
-  }
-  load(paste(path.to.temdata, "my_sol.RData", sep="/"))
+  
 
  # Replace by internal values estimated
   ex_profile$soil$LL15 <- LL15
@@ -359,6 +352,7 @@ process_grid_element <- function(i,country,path.to.extdata,path.to.temdata,Tmaxd
 
   save(ex_profile, file=paste0(pathOUT,"/my_sol_",i,".RData"))
    #cat(" Writing soil file")
+  return(sprintf("Created files for location %s", i))
 }
 
   
@@ -379,7 +373,7 @@ process_grid_element <- function(i,country,path.to.extdata,path.to.temdata,Tmaxd
 readGeo_CM_zone_APSIM <- function(country, useCaseName, Crop, AOI = FALSE, season=1, zone,level2=NA,varietyid,pathIn_zone = T, Depth = c(5,15,30,60,100,200)){
   # cat(zone)
   # General input path with all the weather data
-  general_pathIn <- paste("~/agwise-datasourcing/dataops/datasourcing/Data/useCase_", country, "_", useCaseName,"/", Crop, "/result/geo_4cropModel", sep="")
+  general_pathIn <- paste("/home/jovyan/agwise-datasourcing/dataops/datasourcing/Data/useCase_", country, "_", useCaseName,"/", Crop, "/result/geo_4cropModel", sep="")
   # define input path based on the organization of the folders by zone and level2 (usually just by zone)
   if (pathIn_zone == T) {
     if(!is.na(level2) & !is.na(zone)){
@@ -503,10 +497,10 @@ readGeo_CM_zone_APSIM <- function(country, useCaseName, Crop, AOI = FALSE, seaso
 
   # Set working directory to save the results (weather and soil data in APSIM format)
   if(AOI == TRUE){
-    path.to.extdata <- paste("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", 
+    path.to.extdata <- paste("/home/jovyan/agwise-cropping-innovation/Data/useCase_", 
                              country, "_",useCaseName, "/", Crop, "/transform/APSIM/AOI/",varietyid, sep="")
     }else{
-    path.to.extdata <- paste("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", 
+    path.to.extdata <- paste("/home/jovyan/agwise-cropping-innovation/Data/useCase_", 
                              country, "_",useCaseName, "/", Crop, "/transform/APSIM/fieldData/",varietyid, sep="")
   }
   
@@ -551,20 +545,33 @@ readGeo_CM_zone_APSIM <- function(country, useCaseName, Crop, AOI = FALSE, seaso
     file.remove(log_file)
   }
   
+  # Define working directory with template data (soil and weather files in APSIM format as template)
+  path.to.temdata <- paste("/home/jovyan/agwise-cropping-innovation/Data/useCase_", 
+                           country, "_",useCaseName, "/", Crop, "/Landing/APSIM/", sep="")
+  if (!dir.exists(path.to.temdata)){
+    print("Directory with template data (soil and weather files in APSIM) does not exist, please add the template files. Process will stop.")
+    dir.create(file.path(path.to.temdata), recursive = TRUE)
+    return(NULL)
+  }
+  load(paste(path.to.temdata, "my_sol.RData", sep="/"))
   
   # Set up parallel processing (for more efficient processing)
   num_cores <- availableCores() -3
   plan(multisession, workers = num_cores)
+  # plan(sequential)
   
   results <- future_lapply(indices, function(i) {
     # message <- paste("Progress experiment:", i, "out of", length(indices),"for variety", varietyid)
     # cat(message, "\n", file = log_file, append = TRUE)
-    process_grid_element(i, country=country, path.to.extdata=path.to.extdata,
-                         path.to.temdata=path.to.temdata, Tmaxdata=TemperatureMax, Tmindata=TemperatureMin,
-                         Sraddata=SolarRadiation, Rainfalldata=Rainfall, coords=coords, Soil=Soil,
-                         AOI=AOI, varietyid=varietyid, zone=zone, level2=level2, Depth = Depth)
+    res <- process_grid_element(i, country=country, path.to.extdata=path.to.extdata,
+                         path.to.temdata=path.to.temdata,
+                         Tmaxdata=TemperatureMax, Tmindata=TemperatureMin,
+                         Sraddata=SolarRadiation, Rainfalldata=Rainfall,
+                         coords=coords, Soil=Soil, AOI=AOI, varietyid=varietyid,
+                         zone=zone, ex_profile = ex_profile, level2=level2, 
+                         Depth = Depth)
     # message2 <- paste("Finished:", i, "out of", length(indices),"for variety", varietyid)
     # cat(message2, "\n", file = log_file, append = TRUE)
-  })
+  }, future.globals = TRUE)
   
 }

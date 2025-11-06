@@ -100,9 +100,9 @@ merge_ROTATION_APSIM_output <- function(country, useCaseName, Crops, expfile_nam
       if (is.null(season)) {
         stop("With AOI=TRUE, season cannot be null. Please provide a season number.")
       }
-      path.to.extdata <- paste("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", country, "_", useCaseName, "/", Crop, "/transform/APSIM/AOI/", varietyid, sep = "")
+      path.to.extdata <- paste("/home/jovyan/agwise-cropping-innovation/Data/useCase_", country, "_", useCaseName, "/", Crop, "/transform/APSIM/AOI/", varietyid, sep = "")
     } else {
-      path.to.extdata <- paste("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", country, "_", useCaseName, "/", Crop, "/transform/APSIM/fieldData/", varietyid, sep = "")
+      path.to.extdata <- paste("/home/jovyan/agwise-cropping-innovation/Data/useCase_", country, "_", useCaseName, "/", Crop, "/transform/APSIM/fieldData/", varietyid, sep = "")
     }
     
     if (!dir.exists(file.path(path.to.extdata))) {
@@ -176,9 +176,9 @@ merge_ROTATION_APSIM_output <- function(country, useCaseName, Crops, expfile_nam
   }
   
   if (AOI == TRUE) {
-    dir_path <- paste0("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", country, "_", useCaseName, "/", Crop, "/result/APSIM/AOI/")
+    dir_path <- paste0("/home/jovyan/agwise-cropping-innovation/Data/useCase_", country, "_", useCaseName, "/", Crop, "/result/APSIM/AOI/")
   } else {
-    dir_path <- paste0("/home/jovyan/agwise-potentialyield/dataops/potentialyield/Data/useCase_", country, "_", useCaseName, "/", Crop, "/result/APSIM/fieldData/")
+    dir_path <- paste0("/home/jovyan/agwise-cropping-innovation/Data/useCase_", country, "_", useCaseName, "/", Crop, "/result/APSIM/fieldData/")
   }
   
   if (!dir.exists(dir_path)) {

@@ -64,7 +64,7 @@ apsim.plots<- function(country, variety, useCaseName, Crops,
                                  produce_EXTE_plots=FALSE, yield_column=NULL){
   Crop <- Crops[1]
   clean_expfile_name <- tools::file_path_sans_ext(expfile_name)
-  results <- read_parquet(paste0("~/agwise-potentialyield/dataops/potentialyield/Data/useCase_Rwanda_RAB/Maize/result/APSIM/AOI/",
+  results <- read_parquet(paste0("/home/jovyan/agwise-cropping-innovation/Data/useCase_Rwanda_RAB/Maize/result/APSIM/AOI/",
                                  clean_expfile_name,
                                  ".parquet"))
   if (!is.null(yield_column) && (yield_column %in% names(results))){
@@ -177,7 +177,7 @@ apsim.plots<- function(country, variety, useCaseName, Crops,
     labs(title = "Best Performing Sowing Date by Location",
          color = "Sowing Date")
   
-  ggsave(paste0("~/agwise-potentialyield/dataops/potentialyield/Data/useCase_", country_ori, "_", useCaseName, "/", Crop, "/result/APSIM/", clean_expfile_name, "_best_sowdate_by_loc.png"),
+  ggsave(paste0("/home/jovyan/agwise-cropping-innovation/Data/useCase_", country_ori, "_", useCaseName, "/", Crop, "/result/APSIM/", clean_expfile_name, "_best_sowdate_by_loc.png"),
          p1, width = 8, height = 6, dpi = 300)
   print(p1)
   
@@ -187,7 +187,7 @@ apsim.plots<- function(country, variety, useCaseName, Crops,
                aes(x=Longitude, y=Latitude, color= Yield), 
                size = 2) +
     labs(title = "Highest Yield by location")
-  ggsave(paste0("~/agwise-potentialyield/dataops/potentialyield/Data/useCase_", country_ori, "_", useCaseName, "/", Crop, "/result/APSIM/", clean_expfile_name, "_highest_yield_by_loc.png"),
+  ggsave(paste0("/home/jovyan/agwise-cropping-innovation/Data/useCase_", country_ori, "_", useCaseName, "/", Crop, "/result/APSIM/", clean_expfile_name, "_highest_yield_by_loc.png"),
          p3, width = 8, height = 6, dpi = 300)
   print(p3)
 }
