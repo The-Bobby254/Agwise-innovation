@@ -1,0 +1,1389 @@
+import json
+import math
+import re
+import shutil
+from copy import deepcopy
+from pathlib import Path
+
+import pandas as pd
+
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+COUNTRY = "Ghana"
+EXPECTED_SITE_COUNT = 182
+EXPECTED_LAYER_COUNT = 6
+
+
+PROJECT_ROOT = Path.cwd()
+
+APSIM_DIR = PROJECT_ROOT / "Ghana_APSIM"
+
+TEMPLATE = (
+    APSIM_DIR
+    / "apx"
+    / "maize"
+    / "template"
+    / "Ghana_Maize_Monocrop_site1.apsimx"
+)
+
+SOIL_FILE = (
+    APSIM_DIR
+    / "data"
+    / "soil"
+    / "Ghana_APSIM_Soil_Profiles.csv"
+)
+
+SOURCE_WEATHER_DIR = (
+    APSIM_DIR
+    / "data"
+    / "weather"
+)
+
+GENERATED_DIR = (
+    APSIM_DIR
+    / "apx"
+    / "maize"
+    / "generated"
+)
+
+OUTPUT = (
+    GENERATED_DIR
+    / "Ghana_Maize_Monocrop_AllSites.apsimx"
+)
+
+GENERATED_WEATHER_DIR = GENERATED_DIR / "weather"
+
+
+# ============================================================================
+# CALIBRATION PARAMETERS
+# ============================================================================
+
+CALIBRATION = {
+    "cultivar": "Mid",
+
+    "population": 6.0,
+    "sowing_depth": 30.0,
+    "row_spacing": 750.0,
+
+    "sowing_start": "01-nov",
+    "sowing_end": "10-jan",
+
+    # Set min_esw to 0 for an unconditional soil-water test.
+    "min_esw": 100.0,
+    "min_rain": 0.0,
+    "rain_days": 0,
+
+    "fertiliser_amount": 160.0,
+    "fertiliser_type": "NO3N",
+    "fertiliser_date": "01-Nov",
+
+    "residue_name": "maize_stubble",
+    "residue_type": "maize",
+    "residue_mass": 500.0,
+    "residue_standing_fraction": 0.0,
+    "residue_cpr": 0.0,
+    "residue_cnr": 10.0,
+}
+
+
+# ============================================================================
+# JSON HELPERS
+# ============================================================================
+
+def load_json(path: Path) -> dict:
+    with path.open("r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+def save_json(data: dict, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    with path.open("w", encoding="utf-8") as file:
+        json.dump(data, file, indent=2)
+        file.write("\n")
+
+
+def walk_nodes(node):
+    if isinstance(node, dict):
+        yield node
+
+        for value in node.values():
+            yield from walk_nodes(value)
+
+    elif isinstance(node, list):
+        for value in node:
+            yield from walk_nodes(value)
+
+
+def find_named_node(root: dict, name: str) -> dict:
+    matches = [
+        node
+        for node in walk_nodes(root)
+        if node.get("Name") == name
+    ]
+
+    if not matches:
+        raise ValueError(
+            f"Could not find APSIM node named '{name}'."
+        )
+
+    if len(matches) > 1:
+        raise ValueError(
+            f"Found {len(matches)} APSIM nodes named '{name}'. "
+            "Expected exactly one."
+        )
+
+    return matches[0]
+
+
+def find_child_by_type(parent: dict, type_name: str) -> dict:
+    matches = [
+        child
+        for child in parent.get("Children", [])
+        if child.get("$type") == type_name
+    ]
+
+    if len(matches) != 1:
+        raise ValueError(
+            f"Expected one child of type '{type_name}', "
+            f"but found {len(matches)}."
+        )
+
+    return matches[0]
+
+
+def find_child_by_name(parent: dict, name: str) -> dict:
+    matches = [
+        child
+        for child in parent.get("Children", [])
+        if child.get("Name") == name
+    ]
+
+    if len(matches) != 1:
+        raise ValueError(
+            f"Expected one child named '{name}', "
+            f"but found {len(matches)}."
+        )
+
+    return matches[0]
+
+
+def set_manager_parameter(
+    manager: dict,
+    key: str,
+    value,
+) -> None:
+    parameters = manager.setdefault("Parameters", [])
+
+    for parameter in parameters:
+        if parameter.get("Key") == key:
+            parameter["Value"] = str(value)
+            return
+
+    parameters.append(
+        {
+            "Key": key,
+            "Value": str(value),
+        }
+    )
+
+
+# ============================================================================
+# DEPTH PARSING
+# ============================================================================
+
+def parse_depth_endpoint(depth_value) -> float:
+    """
+    Convert the bottom endpoint of a soil depth interval to millimetres.
+
+    Examples:
+        0-5cm       -> 50
+        5-15cm      -> 150
+        15-30cm     -> 300
+        100-200cm   -> 2000
+    """
+
+    text = str(depth_value).strip().lower()
+
+    numbers = re.findall(
+        r"\d+(?:\.\d+)?",
+        text,
+    )
+
+    if not numbers:
+        raise ValueError(
+            f"Could not parse soil depth: {depth_value}"
+        )
+
+    endpoint = float(numbers[-1])
+
+    if "mm" in text:
+        return endpoint
+
+    # Explicit cm and unitless intervals are interpreted as centimetres.
+    return endpoint * 10.0
+
+
+def get_site_soil(
+    soil: pd.DataFrame,
+    site_id: str,
+) -> pd.DataFrame:
+    site_soil = (
+        soil.loc[soil["site_id"] == site_id]
+        .copy()
+    )
+
+    if len(site_soil) != EXPECTED_LAYER_COUNT:
+        raise ValueError(
+            f"{site_id} has {len(site_soil)} soil layers; "
+            f"expected {EXPECTED_LAYER_COUNT}."
+        )
+
+    try:
+        site_soil["depth_endpoint_mm"] = (
+            site_soil["depth"]
+            .apply(parse_depth_endpoint)
+        )
+    except Exception as error:
+        raise ValueError(
+            f"{site_id}: could not parse soil depths from "
+            f"{site_soil['depth'].tolist()}"
+        ) from error
+
+    if site_soil["depth_endpoint_mm"].isna().any():
+        raise ValueError(
+            f"{site_id}: one or more soil depths could not be parsed."
+        )
+
+    return (
+        site_soil
+        .sort_values("depth_endpoint_mm")
+        .reset_index(drop=True)
+    )
+
+
+def get_layer_thickness(
+    site_soil: pd.DataFrame,
+) -> list[float]:
+    """
+    Convert cumulative soil depth endpoints to layer thicknesses.
+
+    0-5cm, 5-15cm, 15-30cm, 30-60cm, 60-100cm, 100-200cm
+
+    becomes:
+
+    50, 100, 150, 300, 400, 1000 mm
+    """
+
+    endpoints = (
+        site_soil["depth_endpoint_mm"]
+        .astype(float)
+        .tolist()
+    )
+
+    if len(endpoints) != EXPECTED_LAYER_COUNT:
+        raise ValueError(
+            f"Expected {EXPECTED_LAYER_COUNT} depth endpoints, "
+            f"found {len(endpoints)}."
+        )
+
+    thickness = []
+    previous_endpoint = 0.0
+
+    for endpoint in endpoints:
+        layer_thickness = endpoint - previous_endpoint
+
+        if layer_thickness <= 0:
+            raise ValueError(
+                "Soil depth endpoints must be strictly increasing: "
+                f"{endpoints}"
+            )
+
+        thickness.append(layer_thickness)
+        previous_endpoint = endpoint
+
+    return thickness
+
+
+# ============================================================================
+# DATA VALIDATION
+# ============================================================================
+
+def validate_required_paths() -> None:
+    required_paths = {
+        "APSIM template": TEMPLATE,
+        "soil file": SOIL_FILE,
+        "weather directory": SOURCE_WEATHER_DIR,
+    }
+
+    for description, path in required_paths.items():
+        if not path.exists():
+            raise FileNotFoundError(
+                f"{description} was not found:\n{path}"
+            )
+
+
+def load_soil_data() -> pd.DataFrame:
+    soil = pd.read_csv(SOIL_FILE)
+
+    required_columns = {
+        "site_id",
+        "latitude",
+        "longitude",
+        "depth",
+        "BD",
+        "LL15",
+        "DUL",
+        "Carbon",
+        "PH",
+        "CEC",
+    }
+
+    missing = required_columns.difference(soil.columns)
+
+    if missing:
+        raise ValueError(
+            "The soil file is missing these required columns: "
+            f"{sorted(missing)}"
+        )
+
+    soil["site_id"] = (
+        soil["site_id"]
+        .astype(str)
+        .str.strip()
+    )
+
+    if soil["site_id"].eq("").any():
+        raise ValueError(
+            "The soil file contains blank site_id values."
+        )
+
+    return soil
+
+
+def get_site_ids(soil: pd.DataFrame) -> list[str]:
+    site_ids = sorted(soil["site_id"].unique())
+
+    if len(site_ids) != EXPECTED_SITE_COUNT:
+        raise ValueError(
+            f"Expected exactly {EXPECTED_SITE_COUNT} Ghana sites, "
+            f"but found {len(site_ids)}."
+        )
+
+    return site_ids
+
+
+def validate_weather_files(
+    site_ids: list[str],
+) -> None:
+    missing_weather = []
+
+    for site_id in site_ids:
+        weather_file = (
+            SOURCE_WEATHER_DIR
+            / f"{site_id}.met"
+        )
+
+        if not weather_file.exists():
+            missing_weather.append(str(weather_file))
+
+    if missing_weather:
+        message = "\n".join(missing_weather[:20])
+
+        if len(missing_weather) > 20:
+            message += (
+                f"\n... and {len(missing_weather) - 20} more."
+            )
+
+        raise FileNotFoundError(
+            "Weather files are missing for these sites:\n"
+            f"{message}"
+        )
+
+
+def validate_six_values(
+    values,
+    name: str,
+    site_id: str,
+) -> None:
+    if values is None:
+        raise ValueError(
+            f"{site_id}: {name} is missing."
+        )
+
+    if len(values) != EXPECTED_LAYER_COUNT:
+        raise ValueError(
+            f"{site_id}: {name} has {len(values)} values; "
+            f"expected {EXPECTED_LAYER_COUNT}."
+        )
+
+    for index, value in enumerate(values):
+        if not math.isfinite(float(value)):
+            raise ValueError(
+                f"{site_id}: {name}[{index}] is not finite: {value}"
+            )
+
+
+# ============================================================================
+# WATER BALANCE LOCATION
+# ============================================================================
+
+def ensure_water_balance_under_soil(
+    zone: dict,
+    soil: dict,
+) -> dict:
+    """
+    Ensure WaterBalance is a child of Soil.
+
+    The Water model resolves its water-balance sibling through the soil
+    structure. Therefore WaterBalance must be under Soil.Children.
+    """
+
+    soil_children = soil.setdefault("Children", [])
+    zone_children = zone.setdefault("Children", [])
+
+    soil_water_balances = [
+        child
+        for child in soil_children
+        if child.get("$type")
+        == "Models.WaterModel.WaterBalance, Models"
+    ]
+
+    zone_water_balances = [
+        child
+        for child in zone_children
+        if child.get("$type")
+        == "Models.WaterModel.WaterBalance, Models"
+    ]
+
+    if len(soil_water_balances) > 1:
+        raise ValueError(
+            "More than one WaterBalance model exists under Soil."
+        )
+
+    if len(zone_water_balances) > 1:
+        raise ValueError(
+            "More than one WaterBalance model exists under Field."
+        )
+
+    if soil_water_balances:
+        water_balance = soil_water_balances[0]
+
+    elif zone_water_balances:
+        water_balance = zone_water_balances[0]
+
+        # Move it from Field.Children to Soil.Children.
+        zone_children.remove(water_balance)
+        soil_children.append(water_balance)
+
+    else:
+        water_balance = {
+            "$type": "Models.WaterModel.WaterBalance, Models",
+            "Name": "SoilWater",
+            "ResourceName": "WaterBalance",
+            "SWCON": [
+                0.25,
+                0.25,
+                0.25,
+                0.25,
+                0.25,
+                0.25,
+            ],
+            "Thickness": [
+                50,
+                100,
+                150,
+                300,
+                400,
+                1000,
+            ],
+            "Children": [],
+            "Enabled": True,
+            "ReadOnly": False,
+        }
+
+        soil_children.append(water_balance)
+
+    water_balance["Name"] = "SoilWater"
+    water_balance["ResourceName"] = "WaterBalance"
+    water_balance["Enabled"] = True
+
+    return water_balance
+
+
+def validate_water_balance_location(
+    simulation: dict,
+) -> None:
+    zone = find_child_by_type(
+        simulation,
+        "Models.Core.Zone, Models",
+    )
+
+    soil = find_child_by_type(
+        zone,
+        "Models.Soils.Soil, Models",
+    )
+
+    soil_water_balances = [
+        child
+        for child in soil.get("Children", [])
+        if child.get("$type")
+        == "Models.WaterModel.WaterBalance, Models"
+    ]
+
+    zone_water_balances = [
+        child
+        for child in zone.get("Children", [])
+        if child.get("$type")
+        == "Models.WaterModel.WaterBalance, Models"
+    ]
+
+    if len(soil_water_balances) != 1:
+        raise ValueError(
+            f"{simulation.get('Name')}: expected exactly one "
+            "WaterBalance under Soil, found "
+            f"{len(soil_water_balances)}."
+        )
+
+    if zone_water_balances:
+        raise ValueError(
+            f"{simulation.get('Name')}: WaterBalance remains "
+            "directly under Field."
+        )
+
+    water_balance = soil_water_balances[0]
+
+    validate_six_values(
+        water_balance.get("Thickness"),
+        "WaterBalance.Thickness",
+        simulation.get("Name", "simulation"),
+    )
+
+    validate_six_values(
+        water_balance.get("SWCON"),
+        "WaterBalance.SWCON",
+        simulation.get("Name", "simulation"),
+    )
+
+
+# ============================================================================
+# SOIL VALIDATION
+# ============================================================================
+
+def validate_generated_soil(
+    simulation: dict,
+    site_id: str,
+) -> None:
+    zone = find_child_by_type(
+        simulation,
+        "Models.Core.Zone, Models",
+    )
+
+    soil = find_child_by_type(
+        zone,
+        "Models.Soils.Soil, Models",
+    )
+
+    physical = find_child_by_type(
+        soil,
+        "Models.Soils.Physical, Models",
+    )
+
+    organic = find_child_by_type(
+        soil,
+        "Models.Soils.Organic, Models",
+    )
+
+    chemical = find_child_by_type(
+        soil,
+        "Models.Soils.Chemical, Models",
+    )
+
+    water = find_child_by_type(
+        soil,
+        "Models.Soils.Water, Models",
+    )
+
+    maize_soil = find_child_by_name(
+        physical,
+        "MaizeSoil",
+    )
+
+    find_child_by_name(soil, "Nutrient")
+
+    no3 = find_child_by_name(soil, "NO3")
+    nh4 = find_child_by_name(soil, "NH4")
+    urea = find_child_by_name(soil, "Urea")
+
+    arrays = {
+        "Physical.Thickness": physical["Thickness"],
+        "Physical.BD": physical["BD"],
+        "Physical.AirDry": physical["AirDry"],
+        "Physical.LL15": physical["LL15"],
+        "Physical.DUL": physical["DUL"],
+        "Physical.SAT": physical["SAT"],
+        "Physical.KS": physical["KS"],
+
+        "Organic.Thickness": organic["Thickness"],
+        "Organic.Carbon": organic["Carbon"],
+        "Organic.SoilCNRatio": organic["SoilCNRatio"],
+        "Organic.FBiom": organic["FBiom"],
+        "Organic.FInert": organic["FInert"],
+        "Organic.FOM": organic["FOM"],
+
+        "Chemical.Thickness": chemical["Thickness"],
+        "Chemical.PH": chemical["PH"],
+        "Chemical.CEC": chemical["CEC"],
+
+        "Water.Thickness": water["Thickness"],
+        "Water.InitialValues": water["InitialValues"],
+
+        "MaizeSoil.LL": maize_soil["LL"],
+        "MaizeSoil.KL": maize_soil["KL"],
+        "MaizeSoil.XF": maize_soil["XF"],
+
+        "NO3.Thickness": no3["Thickness"],
+        "NO3.InitialValues": no3["InitialValues"],
+
+        "NH4.Thickness": nh4["Thickness"],
+        "NH4.InitialValues": nh4["InitialValues"],
+
+        "Urea.Thickness": urea["Thickness"],
+        "Urea.InitialValues": urea["InitialValues"],
+    }
+
+    for name, values in arrays.items():
+        validate_six_values(
+            values,
+            name,
+            site_id,
+        )
+
+    for index, value in enumerate(organic["FInert"]):
+        if not 0.0 <= float(value) <= 1.0:
+            raise ValueError(
+                f"{site_id}: Organic.FInert[{index}]={value} "
+                "must be between 0 and 1."
+            )
+
+    for index, value in enumerate(maize_soil["KL"]):
+        if not 0.0 <= float(value) <= 1.0:
+            raise ValueError(
+                f"{site_id}: MaizeSoil.KL[{index}]={value} "
+                "must be between 0 and 1."
+            )
+
+    for index, value in enumerate(maize_soil["XF"]):
+        if not 0.0 <= float(value) <= 1.0:
+            raise ValueError(
+                f"{site_id}: MaizeSoil.XF[{index}]={value} "
+                "must be between 0 and 1."
+            )
+
+
+# ============================================================================
+# CALIBRATION
+# ============================================================================
+
+def apply_calibration_parameters(
+    simulation: dict,
+) -> None:
+    maize_manager = find_named_node(
+        simulation,
+        "MaizeManager",
+    )
+
+    maize_parameters = {
+        "Crop": "[Maize]",
+        "StartDate": CALIBRATION["sowing_start"],
+        "EndDate": CALIBRATION["sowing_end"],
+        "MinESW": CALIBRATION["min_esw"],
+        "MinRain": CALIBRATION["min_rain"],
+        "RainDays": CALIBRATION["rain_days"],
+        "CultivarName": CALIBRATION["cultivar"],
+        "SowingDepth": CALIBRATION["sowing_depth"],
+        "RowSpacing": CALIBRATION["row_spacing"],
+        "Population": CALIBRATION["population"],
+    }
+
+    for key, value in maize_parameters.items():
+        set_manager_parameter(
+            maize_manager,
+            key,
+            value,
+        )
+
+    fertiliser_manager = find_named_node(
+        simulation,
+        "MaizeFertiliserRule",
+    )
+
+    fertiliser_parameters = {
+        "ApplicationAmount": CALIBRATION["fertiliser_amount"],
+        "FertType": CALIBRATION["fertiliser_type"],
+        "CropName": "Maize",
+        "ApplicationDate": CALIBRATION["fertiliser_date"],
+    }
+
+    for key, value in fertiliser_parameters.items():
+        set_manager_parameter(
+            fertiliser_manager,
+            key,
+            value,
+        )
+
+    harvest_manager = find_named_node(
+        simulation,
+        "MaizeHarvest",
+    )
+
+    set_manager_parameter(
+        harvest_manager,
+        "Crop",
+        "[Maize]",
+    )
+
+    residue = find_named_node(
+        simulation,
+        "SurfaceOrganicMatter",
+    )
+
+    residue["InitialResidueName"] = (
+        CALIBRATION["residue_name"]
+    )
+    residue["InitialResidueType"] = (
+        CALIBRATION["residue_type"]
+    )
+    residue["InitialResidueMass"] = (
+        CALIBRATION["residue_mass"]
+    )
+    residue["InitialStandingFraction"] = (
+        CALIBRATION["residue_standing_fraction"]
+    )
+    residue["InitialCPR"] = (
+        CALIBRATION["residue_cpr"]
+    )
+    residue["InitialCNR"] = (
+        CALIBRATION["residue_cnr"]
+    )
+
+
+# ============================================================================
+# WEATHER
+# ============================================================================
+
+def apply_weather(
+    simulation: dict,
+    site_id: str,
+) -> None:
+    weather = find_named_node(
+        simulation,
+        "Weather",
+    )
+
+    weather["FileName"] = (
+        f"weather/{site_id}.met"
+    )
+
+
+# ============================================================================
+# SOIL
+# ============================================================================
+
+def apply_soil(
+    simulation: dict,
+    site_id: str,
+    site_soil: pd.DataFrame,
+) -> None:
+    zone = find_child_by_type(
+        simulation,
+        "Models.Core.Zone, Models",
+    )
+
+    soil = find_child_by_type(
+        zone,
+        "Models.Soils.Soil, Models",
+    )
+
+    water_balance = ensure_water_balance_under_soil(
+        zone,
+        soil,
+    )
+
+    physical = find_child_by_type(
+        soil,
+        "Models.Soils.Physical, Models",
+    )
+
+    organic = find_child_by_type(
+        soil,
+        "Models.Soils.Organic, Models",
+    )
+
+    chemical = find_child_by_type(
+        soil,
+        "Models.Soils.Chemical, Models",
+    )
+
+    water = find_child_by_type(
+        soil,
+        "Models.Soils.Water, Models",
+    )
+
+    temperature = find_child_by_name(
+        soil,
+        "Temperature",
+    )
+
+    nutrient = find_child_by_name(
+        soil,
+        "Nutrient",
+    )
+
+    maize_soil = find_child_by_name(
+        physical,
+        "MaizeSoil",
+    )
+
+    no3 = find_child_by_name(
+        soil,
+        "NO3",
+    )
+
+    nh4 = find_child_by_name(
+        soil,
+        "NH4",
+    )
+
+    urea = find_child_by_name(
+        soil,
+        "Urea",
+    )
+
+    # ------------------------------------------------------------------
+    # Soil metadata
+    # ------------------------------------------------------------------
+
+    soil["Site"] = site_id
+    soil["Country"] = COUNTRY
+    soil["Region"] = COUNTRY
+    soil["SoilType"] = (
+        f"Ghana SoilGrids profile {site_id}"
+    )
+    soil["DataSource"] = (
+        "Ghana APSIM Soil Profiles"
+    )
+
+    soil["Latitude"] = float(
+        site_soil["latitude"].iloc[0]
+    )
+
+    soil["Longitude"] = float(
+        site_soil["longitude"].iloc[0]
+    )
+
+    # ------------------------------------------------------------------
+    # Read six-layer CSV values
+    # ------------------------------------------------------------------
+
+    thickness = get_layer_thickness(
+        site_soil
+    )
+
+    bd = (
+        site_soil["BD"]
+        .astype(float)
+        .tolist()
+    )
+
+    ll15 = (
+        site_soil["LL15"]
+        .astype(float)
+        .tolist()
+    )
+
+    dul = (
+        site_soil["DUL"]
+        .astype(float)
+        .tolist()
+    )
+
+    carbon = (
+        site_soil["Carbon"]
+        .astype(float)
+        .tolist()
+    )
+
+    ph = (
+        site_soil["PH"]
+        .astype(float)
+        .tolist()
+    )
+
+    cec = (
+        site_soil["CEC"]
+        .astype(float)
+        .tolist()
+    )
+
+    # ------------------------------------------------------------------
+    # Calculate AirDry and SAT
+    # ------------------------------------------------------------------
+
+    air_dry = [
+        max(0.0, value - 0.02)
+        for value in ll15
+    ]
+
+    sat = [
+        1.0 - value / 2.65
+        for value in bd
+    ]
+
+    # ------------------------------------------------------------------
+    # Correct soil-water relationships
+    # ------------------------------------------------------------------
+
+    epsilon = 0.0001
+
+    for layer in range(EXPECTED_LAYER_COUNT):
+        max_sat_from_bd = (
+            1.0 - bd[layer] / 2.65
+        )
+
+        sat[layer] = min(
+            sat[layer],
+            max_sat_from_bd - epsilon,
+        )
+
+        if ll15[layer] <= air_dry[layer]:
+            ll15[layer] = (
+                air_dry[layer] + epsilon
+            )
+
+        if dul[layer] <= ll15[layer]:
+            dul[layer] = (
+                ll15[layer] + epsilon
+            )
+
+        if dul[layer] >= sat[layer]:
+            dul[layer] = (
+                sat[layer] - epsilon
+            )
+
+        if not (
+            air_dry[layer]
+            < ll15[layer]
+            < dul[layer]
+            < sat[layer]
+        ):
+            raise ValueError(
+                f"{site_id}, layer {layer + 1}: "
+                "invalid water limits: "
+                f"AirDry={air_dry[layer]}, "
+                f"LL15={ll15[layer]}, "
+                f"DUL={dul[layer]}, "
+                f"SAT={sat[layer]}"
+            )
+
+    initial_water = [
+        (
+            air_dry[layer]
+            + dul[layer]
+        ) / 2.0
+        for layer in range(EXPECTED_LAYER_COUNT)
+    ]
+
+    # ------------------------------------------------------------------
+    # Physical
+    # ------------------------------------------------------------------
+
+    physical["Thickness"] = thickness
+    physical["BD"] = bd
+    physical["AirDry"] = air_dry
+    physical["LL15"] = ll15
+    physical["DUL"] = dul
+    physical["SAT"] = sat
+
+    # ------------------------------------------------------------------
+    # Organic
+    # ------------------------------------------------------------------
+
+    organic["FOMCNRatio"] = 40.0
+    organic["Thickness"] = thickness
+    organic["Carbon"] = carbon
+    organic["CarbonUnits"] = 0
+    organic["SoilCNRatio"] = [12.0] * 6
+
+    organic["FBiom"] = [
+        0.040,
+        0.033,
+        0.027,
+        0.022,
+        0.018,
+        0.015,
+    ]
+
+    organic["FInert"] = [
+        0.800,
+        0.808,
+        0.816,
+        0.824,
+        0.833,
+        0.841,
+    ]
+
+    organic["FOM"] = [
+        150.0,
+        122.81,
+        100.548,
+        82.322,
+        67.399,
+        55.182,
+    ]
+
+    # ------------------------------------------------------------------
+    # Chemical
+    # ------------------------------------------------------------------
+
+    chemical["Thickness"] = thickness
+    chemical["PH"] = ph
+    chemical["CEC"] = cec
+
+    # ------------------------------------------------------------------
+    # Soil temperature
+    # ------------------------------------------------------------------
+
+    temperature["Thickness"] = thickness
+
+    if "InitialValues" not in temperature:
+        temperature["InitialValues"] = [25.0] * 6
+
+    # ------------------------------------------------------------------
+    # Soil water
+    # ------------------------------------------------------------------
+
+    water["Thickness"] = thickness
+    water["InitialValues"] = initial_water
+    water["RelativeTo"] = "LL15"
+    water["FilledFromTop"] = False
+
+    # ------------------------------------------------------------------
+    # Water balance
+    # ------------------------------------------------------------------
+
+    water_balance["Name"] = "SoilWater"
+    water_balance["ResourceName"] = "WaterBalance"
+    water_balance["Thickness"] = thickness
+    water_balance["SWCON"] = [0.25] * 6
+    water_balance["Enabled"] = True
+
+    # ------------------------------------------------------------------
+    # Nutrient model
+    # ------------------------------------------------------------------
+
+    nutrient["Name"] = "Nutrient"
+    nutrient["ResourceName"] = "Nutrient"
+    nutrient["Enabled"] = True
+
+    # ------------------------------------------------------------------
+    # Solutes
+    # ------------------------------------------------------------------
+
+    for solute in (no3, nh4, urea):
+        solute["Thickness"] = thickness
+        solute["InitialValues"] = [0.0] * 6
+        solute["InitialValuesUnits"] = 0
+        solute["WaterTableConcentration"] = 0.0
+        solute["D0"] = 0.0
+
+    # ------------------------------------------------------------------
+    # Maize lower limit
+    # ------------------------------------------------------------------
+
+    maize_soil["LL"] = ll15
+
+    # ------------------------------------------------------------------
+    # Validate the completed soil
+    # ------------------------------------------------------------------
+
+    validate_generated_soil(
+        simulation,
+        site_id,
+    )
+
+    validate_water_balance_location(
+        simulation,
+    )
+
+
+# ============================================================================
+# BUILD ONE SITE SIMULATION
+# ============================================================================
+
+def build_site_simulation(
+    simulation_template: dict,
+    soil_data: pd.DataFrame,
+    site_id: str,
+) -> dict:
+    simulation = deepcopy(
+        simulation_template
+    )
+
+    simulation["Name"] = (
+        f"{site_id}_Maize_Monocrop"
+    )
+
+    site_soil = get_site_soil(
+        soil_data,
+        site_id,
+    )
+
+    apply_weather(
+        simulation,
+        site_id,
+    )
+
+    apply_soil(
+        simulation,
+        site_id,
+        site_soil,
+    )
+
+    apply_calibration_parameters(
+        simulation,
+    )
+
+    return simulation
+
+
+# ============================================================================
+# COPY WEATHER FILES
+# ============================================================================
+
+def copy_weather_files(
+    site_ids: list[str],
+) -> None:
+    GENERATED_WEATHER_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    copied_files = []
+
+    for site_id in site_ids:
+        source = (
+            SOURCE_WEATHER_DIR
+            / f"{site_id}.met"
+        )
+
+        destination = (
+            GENERATED_WEATHER_DIR
+            / f"{site_id}.met"
+        )
+
+        if not source.exists():
+            raise FileNotFoundError(
+                f"Weather file does not exist:\n{source}"
+            )
+
+        shutil.copy2(
+            source,
+            destination,
+        )
+
+        copied_files.append(destination)
+
+    actual_files = list(
+        GENERATED_WEATHER_DIR.glob("*.met")
+    )
+
+    if len(actual_files) != len(site_ids):
+        raise ValueError(
+            f"Expected {len(site_ids)} generated weather files, "
+            f"found {len(actual_files)}."
+        )
+
+    print(
+        f"Copied {len(copied_files)} weather files to:"
+    )
+    print(
+        f"  {GENERATED_WEATHER_DIR}"
+    )
+
+
+# ============================================================================
+# WEATHER ASSIGNMENT VALIDATION
+# ============================================================================
+
+def validate_weather_assignments(
+    simulations: list[dict],
+) -> None:
+    assignments = []
+
+    for simulation in simulations:
+        weather = find_named_node(
+            simulation,
+            "Weather",
+        )
+
+        filename = weather.get("FileName")
+
+        if not filename:
+            raise ValueError(
+                f"{simulation['Name']}: Weather.FileName is empty."
+            )
+
+        assignments.append(filename)
+
+    unique_assignments = set(assignments)
+
+    if len(assignments) != EXPECTED_SITE_COUNT:
+        raise ValueError(
+            f"Expected {EXPECTED_SITE_COUNT} weather assignments, "
+            f"found {len(assignments)}."
+        )
+
+    if len(unique_assignments) != EXPECTED_SITE_COUNT:
+        raise ValueError(
+            f"Expected {EXPECTED_SITE_COUNT} unique weather files, "
+            f"found {len(unique_assignments)}."
+        )
+
+    print(
+        f"Validated {len(unique_assignments)} unique weather assignments."
+    )
+
+
+# ============================================================================
+# BUILD ALL SITES
+# ============================================================================
+
+def build_all_sites() -> None:
+    validate_required_paths()
+
+    print("Loading APSIM template...")
+    apsim = load_json(TEMPLATE)
+
+    print("Loading soil data...")
+    soil_data = load_soil_data()
+
+    site_ids = get_site_ids(
+        soil_data
+    )
+
+    print(
+        f"Sites found: {len(site_ids)}"
+    )
+
+    validate_weather_files(
+        site_ids
+    )
+
+    simulations = [
+        child
+        for child in apsim.get("Children", [])
+        if child.get("$type")
+        == "Models.Core.Simulation, Models"
+    ]
+
+    data_stores = [
+        child
+        for child in apsim.get("Children", [])
+        if child.get("$type")
+        == "Models.Storage.DataStore, Models"
+    ]
+
+    if len(simulations) != 1:
+        raise ValueError(
+            "Expected exactly one template simulation, "
+            f"found {len(simulations)}."
+        )
+
+    if len(data_stores) != 1:
+        raise ValueError(
+            "Expected exactly one DataStore, "
+            f"found {len(data_stores)}."
+        )
+
+    simulation_template = simulations[0]
+    data_store = deepcopy(data_stores[0])
+
+    site_simulations = []
+
+    for number, site_id in enumerate(
+        site_ids,
+        start=1,
+    ):
+        # print(
+        #     f"Building {number}/{len(site_ids)}: "
+        #     f"{site_id}"
+        # )
+
+        simulation = build_site_simulation(
+            simulation_template,
+            soil_data,
+            site_id,
+        )
+
+        site_simulations.append(
+            simulation
+        )
+
+    if len(site_simulations) != EXPECTED_SITE_COUNT:
+        raise ValueError(
+            f"Expected {EXPECTED_SITE_COUNT} generated simulations, "
+            f"found {len(site_simulations)}."
+        )
+
+    validate_weather_assignments(
+        site_simulations
+    )
+
+    copy_weather_files(
+        site_ids
+    )
+
+    apsim["Name"] = (
+        "Ghana_Maize_Monocrop_AllSites"
+    )
+
+    apsim["Children"] = (
+        site_simulations
+        + [data_store]
+    )
+
+    save_json(
+        apsim,
+        OUTPUT,
+    )
+
+    print("=" * 70)
+    print(
+        "GHANA APSIM MAIZE ALL-SITES MODEL CREATED"
+    )
+    print("=" * 70)
+    print(
+        f"Sites: {len(site_simulations)}"
+    )
+    print(
+        f"APSIMX: {OUTPUT}"
+    )
+    print(
+        f"Weather: {GENERATED_WEATHER_DIR}"
+    )
+    print()
+    print(
+        "Calibration parameters applied:"
+    )
+
+    for key, value in CALIBRATION.items():
+        print(
+            f"  {key}: {value}"
+        )
+
+if __name__ == "__main__":
+    build_all_sites()
